@@ -1,0 +1,12 @@
+[Unit]
+Description=Service for device app manager.
+After=
+
+[Service]
+User=pi  # Change this
+# Set accordingly
+ExecStart=/opt/device-tmate-agent/device_tmate_agent.py
+Restart=always
+
+[Install]
+WantedBy=default.target
