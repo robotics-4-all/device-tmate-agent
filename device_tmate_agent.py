@@ -109,13 +109,19 @@ class DeviceTmateAgent():
 
     def _start_rpc_callback(self, msg, meta):
         print('[DEBUG] - Start RPC Call')
+        status = 200
+        error = ''
+        tinfo = ''
         try:
             self.start_tmate_client()
+            tinfo = self._get_tunnel_info()
         except Exception as exc:
-            pass
+            status = 400
+            error = 'Error: {}'.format(exc)
         response = {
-            'ssh': self.ssh_con_str,
-            'ssh_ro': self.ssh_con_ro_str
+            'tunnel_info': tinfo,
+            'status': status,
+            'error': error
         }
         return response
 
@@ -126,7 +132,7 @@ class DeviceTmateAgent():
         try:
             self.stop_tmate_agent()
         except Exception as exc:
-            status = 500
+            status = 400
             error = exc
         response = {
             'status': status,
@@ -135,10 +141,20 @@ class DeviceTmateAgent():
         return response
 
     def _tunnel_info_rpc_callback(self, msg, meta):
-        return self._get_tunnel_info()
-
-    def _publish_tunnel_info(self):
-        self.pub.publish(self._get_tunnel_info())
+        status = 200
+        error = ''
+        tinfo = ''
+        try:
+            tinfo = self._get_tunnel_info()
+        except Exception as exc:
+            status = 400
+            error = exc
+        response = {
+            'tunnel_info': tinfo,
+            'status': status,
+            'error': error
+        }
+        return response
 
     def _get_tunnel_info(self):
         _info = {
@@ -214,7 +230,7 @@ class DeviceTmateAgent():
         self.ssh_con_str = ''
         self.ssh_con_ro_str = ''
 
-    def parse_sh_script_output(self, out):
+    def _parse_sh_script_output(self, out):
         out = out.decode('utf8').split('\n')
         if 'create session failed' in out[0]:
             print('[WARN] - {}'.format(out[0]))
