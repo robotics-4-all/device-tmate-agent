@@ -1,13 +1,120 @@
 #!/usr/bin/env python3
 
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+    unicode_literals
+)
+
 import subprocess
 import os
+import configparser
 
 from amqp_common import (
     ConnectionParameters, Credentials, EventEmitter,
     Event, EventEmitterOptions, Rate,
     RpcServer, PublisherSync
 )
+
+
+def load_cfg_file(fpath):
+    cfg_file = os.path.expanduser(fpath)
+    if not os.path.isfile(cfg_file):
+        self.log.warn('Config file does not exist')
+        return False
+    config = configparser.ConfigParser()
+    config.read(cfg_file)
+
+    ## -------------------------------------------------------------
+    ## ----------------------- CORE Parameters ---------------------
+    ## -------------------------------------------------------------
+    try:
+        debug = config.getboolean('core', 'debug')
+    except configparser.NoOptionError:
+        debug = False
+    try:
+        device_id = config.get('core', 'device_id')
+    except configparser.NoOptionError:
+        device_id = None
+    try:
+        tmate_socket_path = config.get('core', 'tmate_socket_path')
+    except configparser.NoOptionError:
+        tmate_socket_path = '/tmp/tmate.sock'
+    ## -------------------------------------------------------------
+    ## ----------------------- Broker Parameters -------------------
+    ## -------------------------------------------------------------
+    try:
+        username = config.get('broker', 'username')
+    except configparser.NoOptionError:
+        username = 'guest'
+    try:
+        password = config.get('broker', 'password')
+    except configparser.NoOptionError:
+        password = 'guest'
+    try:
+        host = config.get('broker', 'host')
+    except configparser.NoOptionError:
+        host = 'localhost'
+    try:
+        port = config.get('broker', 'port')
+    except configparser.NoOptionError:
+        port = '5762'
+    try:
+        vhost = config.get('broker', 'vhost')
+    except configparser.NoOptionError:
+        vhost = '/'
+    try:
+        rpc_exchange = config.get('broker', 'rpc_exchange')
+    except configparser.NoOptionError:
+        rpc_exchange = '/'
+    try:
+        event_exchange = config.get('broker', 'event_exchange')
+    except configparser.NoOptionError:
+        event_exchange = 'amq.events'
+    try:
+        topic_exchange = config.get('broker', 'topic_exchange')
+    except configparser.NoOptionError:
+        topic_exchange = 'amq.topic'
+    try:
+        tmate_socket_path = config.get('broker', 'tmate_socket_path')
+    except configparser.NoOptionError:
+        tmate_socket_path = '/tmp/tmate.sock'
+    ## -------------------------------------------------------------
+    ## ------------------ Control Interfaces -----------------------
+    ## -------------------------------------------------------------
+    try:
+        start_rpc_name = config.get('control_interfaces', 'start_rpc_name')
+    except configparser.NoOptionError:
+        start_rpc_name = 'thing.{DEVICE_ID}.tmateagent.start'
+    try:
+        stop_rpc_name = config.get('control_interfaces', 'stop_rpc_name')
+    except configparser.NoOptionError:
+        stop_rpc_name = 'thing.{DEVICE_ID}.tmateagent.stop'
+    try:
+        tunnel_info_rpc_name = config.get('control_interfaces',
+                                          'tunnel_info_rpc_name')
+    except configparser.NoOptionError:
+        tunnel_info_rpc_name = 'thing.{DEVICE_ID}.tmateagent.tunnel_info'
+    ## ------------------------------------------------------------
+    ## -------------- Monitoring Interfaces -----------------------
+    ## ------------------------------------------------------------
+    try:
+        heartbeat_event_name = config.get('monitoring_interfaces',
+                                          'heartbeat_event_name')
+    except configparser.NoOptionError:
+        heartbeat_event_name = 'thing.{DEVICE_ID}.tmateagent.heartbeat'
+    try:
+        heartbeat_interval = config.getint('monitoring_interfaces',
+                                           'heartbeat_interval')
+    except configparser.NoOptionError:
+        heartbeat_interval = 10
+
+    _cfg = AgentConfig(username, password, host, port, vhost, event_exchange,
+                 rpc_exchange, tmate_socket_path, heartbeat_event_name,
+                 start_rpc_name, stop_rpc_name, tunnel_info_rpc_name,
+                 heartbeat_interval, device_id, debug)
+    return _cfg
 
 
 class AgentConfig():
@@ -24,7 +131,7 @@ class AgentConfig():
                  start_rpc_name='thing.{DEVICE_ID}.tmateagent.start',
                  stop_rpc_name='thing.{DEVICE_ID}.tmateagent.stop',
                  tunnel_info_rpc_name='thing.{DEVICE_ID}.tmateagent.tunnel_info',
-                 heartbeat_interval=2, device_id=None):
+                 heartbeat_interval=10, device_id=None, debug=True):
         self.broker_params = {
             'username': broker_username,
             'password': broker_password,
@@ -36,6 +143,7 @@ class AgentConfig():
         }
         self.tmate_socket_path = tmate_socket_path
         self.heartbeat_interval = heartbeat_interval
+        self.debug = debug
         if device_id is None:
             device_id = broker_username
         self.device_id = device_id
@@ -63,8 +171,6 @@ class DeviceTmateAgent():
                                  broker_password='k!sh@')
         self.config = config
 
-        self.debug = True
-
         self._init_broker_endpoints()
 
     def _init_broker_endpoints(self):
@@ -80,7 +186,7 @@ class DeviceTmateAgent():
         self.hb_em = EventEmitter(
             options,
             connection_params=con_params,
-            debug=self.debug
+            debug=self.config.debug
         )
 
         self.hb_event = Event(name=self.config.hb_event_name,
@@ -90,21 +196,21 @@ class DeviceTmateAgent():
             self.config.start_rpc_name,
             on_request=self._start_rpc_callback,
             connection_params=con_params,
-            debug=self.debug)
+            debug=self.config.debug)
         self.start_rpc.run_threaded()
 
         self.stop_rpc = RpcServer(
             self.config.stop_rpc_name,
             on_request=self._stop_rpc_callback,
             connection_params=con_params,
-            debug=self.debug)
+            debug=self.config.debug)
         self.stop_rpc.run_threaded()
 
         self.tunnel_info_rpc = RpcServer(
             self.config.tunnel_info_rpc_name,
             on_request=self._tunnel_info_rpc_callback,
             connection_params=con_params,
-            debug=self.debug)
+            debug=self.config.debug)
         self.tunnel_info_rpc.run_threaded()
 
     def _start_rpc_callback(self, msg, meta):
@@ -246,5 +352,7 @@ class DeviceTmateAgent():
 
 
 if __name__ == '__main__':
-    agent = DeviceTmateAgent()
+    cfg = load_cfg_file(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'config.ini'))
+    agent = DeviceTmateAgent(cfg)
     agent.run()
