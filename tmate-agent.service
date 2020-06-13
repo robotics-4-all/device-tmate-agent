@@ -1,0 +1,16 @@
+[Unit]
+Description=Service for device tmate agent.
+After=multi-user.target network.target
+
+[Service]
+User=pi
+Type=idle
+ExecStart=/usr/bin/python3 -u device_tmate_agent.py
+WorkingDirectory=/home/pi/device-tmate-agent/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
