@@ -133,7 +133,7 @@ class AgentConfig():
                  start_rpc_name='thing.{DEVICE_ID}.tmateagent.start',
                  stop_rpc_name='thing.{DEVICE_ID}.tmateagent.stop',
                  tunnel_info_rpc_name='thing.{DEVICE_ID}.tmateagent.tunnel_info',
-                 heartbeat_interval=10, device_id=None, debug=True):
+                 heartbeat_interval=10, device_id=None, debug=False):
         self.broker_params = {
             'username': broker_username,
             'password': broker_password,
@@ -146,6 +146,7 @@ class AgentConfig():
         self.tmate_socket_path = tmate_socket_path
         self.heartbeat_interval = heartbeat_interval
         self.debug = debug
+        print(self.debug)
         if device_id is None:
             device_id = broker_username
         self.device_id = device_id
@@ -361,6 +362,7 @@ if __name__ == '__main__':
                         default='~/.config/device_tmate_agent/config')
     args = parser.parse_args()
     cfg_file = args.config
+
     config = load_cfg_file(cfg_file)
     agent = DeviceTmateAgent(config)
     agent.run_forever()
