@@ -10,6 +10,8 @@ from __future__ import (
 import subprocess
 import os
 import configparser
+import argparse
+import json
 
 from amqp_common import (
     ConnectionParameters, Credentials, EventEmitter,
@@ -21,7 +23,7 @@ from amqp_common import (
 def load_cfg_file(fpath):
     cfg_file = os.path.expanduser(fpath)
     if not os.path.isfile(cfg_file):
-        self.log.warn('Config file does not exist')
+        print('Config file does not exist')
         return False
     config = configparser.ConfigParser()
     config.read(cfg_file)
@@ -152,6 +154,7 @@ class AgentConfig():
         self.stop_rpc_name = stop_rpc_name.replace('{DEVICE_ID}', device_id)
         self.tunnel_info_rpc_name = tunnel_info_rpc_name.replace(
             '{DEVICE_ID}', device_id)
+
 
 class DeviceTmateAgent():
     """Device tmate agent class.
@@ -295,7 +298,7 @@ class DeviceTmateAgent():
         print('[INFO]: Tmate client Connected!')
         return True
 
-    def run(self):
+    def run_forever(self):
         rate = Rate(1 / self.config.heartbeat_interval)
         self.start_tmate_client()
         while True:
@@ -352,7 +355,12 @@ class DeviceTmateAgent():
 
 
 if __name__ == '__main__':
-    cfg = load_cfg_file(os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), 'config.ini'))
-    agent = DeviceTmateAgent(cfg)
-    agent.run()
+    parser = argparse.ArgumentParser(description='Tmate Agent CLI')
+    parser.add_argument('--config', dest='config',
+                        help='Config file path',
+                        default='~/.config/device_tmate_agent/config')
+    args = parser.parse_args()
+    cfg_file = args.config
+    config = load_cfg_file(cfg_file)
+    agent = DeviceTmateAgent(config)
+    agent.run_forever()
