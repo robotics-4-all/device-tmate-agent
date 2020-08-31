@@ -11,6 +11,7 @@ from commlib.transports.amqp import ConnectionParameters
 from commlib.transports.amqp import EventEmitter
 from commlib.events import Event
 from commlib.utils import Rate
+from commlib.logger import RemoteLogger
 
 
 def load_cfg_file(fpath):
@@ -175,10 +176,16 @@ class DeviceTmateAgent():
         conn_params.credentials.username = self.config.broker_params['username']
         conn_params.credentials.password = self.config.broker_params['password']
 
+        device_id = conn_params.credentials.username
+
         self._node = Node(node_name=self.__class__.__name__,
                           transport_type=TransportType.AMQP,
-                          debug=self.config.debug, remote_logger=False,
+                          debug=self.config.debug,
+                          remote_logger=True,
+                          remote_logger_uri=f'thing.{device_id}.tmateagent.logs',
                           transport_connection_params=conn_params)
+
+        self.log = self._node.get_logger()
 
         self._init_endpoints()
 
@@ -209,7 +216,7 @@ class DeviceTmateAgent():
         self.tunnel_info_rpc.run()
 
     def _start_rpc_callback(self, msg, meta):
-        print('[DEBUG] - Start RPC Call')
+        self.log.info('Start RPC Service called')
         status = 200
         error = ''
         tinfo = ''
@@ -227,7 +234,7 @@ class DeviceTmateAgent():
         return response
 
     def _stop_rpc_callback(self, msg, meta):
-        print('[DEBUG] - STOP RPC Call')
+        self.log.info('Stop RPC Service called')
         status = 200
         error = ''
         try:
@@ -285,9 +292,9 @@ class DeviceTmateAgent():
                                            'wait', 'tmate-ready'],
                                           stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as exc:
-            print('[ERROR]: {} - {}'.format(exc.returncode, exc.output))
+            self.log.error('{} - {}'.format(exc.returncode, exc.output))
             return False
-        print('[INFO]: Tmate client Connected!')
+        self.log.info('Tmate client Connected!')
         return True
 
     def run_forever(self):
@@ -300,7 +307,7 @@ class DeviceTmateAgent():
 
     def start_tmate_client(self):
         """Start tmate client process.
-        The process is spawned in daemon mode and tunnel info are printed
+        The process is spawned in daemon mode and tunnel info are self.log.infoed
         upon successfull connection with the remote tmate server.
         """
         if os.path.exists(self.config.tmate_socket_path):
@@ -312,8 +319,8 @@ class DeviceTmateAgent():
         self.ssh_con_str = _out
         _out = self._tmate_get_ssh_ro_info()
         self.ssh_con_ro_str = _out
-        print('[INFO]: Tunnel info: {}'.format(self.ssh_con_str))
-        print('[INFO]: Read-Only Tunnel info: {}'.format(
+        self.log.info('Tunnel info: {}'.format(self.ssh_con_str))
+        self.log.info('Read-Only Tunnel info: {}'.format(
             self.ssh_con_str))
 
     def spawn_tmate_client_sh(self):
@@ -334,14 +341,14 @@ class DeviceTmateAgent():
     def _parse_sh_script_output(self, out):
         out = out.decode('utf8').split('\n')
         if 'create session failed' in out[0]:
-            print('[WARN] - {}'.format(out[0]))
+            self.log.warn('{}'.format(out[0]))
             ssh_con_str = out[1]
             ssh_con_ro_str = out[2]
         else:
             ssh_con_str = out[0]
             ssh_con_ro_str = out[1]
-        print('[INFO] - SSH Session String <{}>'.format(ssh_con_str))
-        print('[INFO] - SSH RO Session String <{}>'.format(ssh_con_ro_str))
+        self.log.info('SSH Session String <{}>'.format(ssh_con_str))
+        self.log.info('SSH RO Session String <{}>'.format(ssh_con_ro_str))
         self.ssh_con_str = ssh_con_str
         self.ssh_con_ro_str = ssh_con_ro_str
 
