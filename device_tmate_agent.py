@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
 
-from __future__ import (
-    absolute_import,
-    division,
-    print_function,
-    unicode_literals
-)
-
 import subprocess
 import os
 import configparser
 import argparse
 import json
 
-from amqp_common import (
-    ConnectionParameters, Credentials, EventEmitter,
-    Event, EventEmitterOptions, Rate,
-    RpcServer, PublisherSync
-)
+from commlib.node import Node, TransportType
+from commlib.transports.amqp import ConnectionParameters
+from commlib.transports.amqp import EventEmitter
+from commlib.events import Event
+from commlib.utils import Rate
 
 
 def load_cfg_file(fpath):
@@ -146,7 +139,6 @@ class AgentConfig():
         self.tmate_socket_path = tmate_socket_path
         self.heartbeat_interval = heartbeat_interval
         self.debug = debug
-        print(self.debug)
         if device_id is None:
             device_id = broker_username
         self.device_id = device_id
@@ -175,47 +167,46 @@ class DeviceTmateAgent():
                                  broker_password='k!sh@')
         self.config = config
 
-        self._init_broker_endpoints()
-
-    def _init_broker_endpoints(self):
-        b_params = self.config.broker_params
-        con_params = ConnectionParameters(
-            host=b_params['host'], port=b_params['port'],
-            vhost=b_params['vhost']
+        conn_params = ConnectionParameters(
+            host=self.config.broker_params['host'],
+            port=self.config.broker_params['port'],
+            vhost=self.config.broker_params['vhost'],
         )
-        con_params.credentials = Credentials(b_params['username'],
-                                             b_params['password'])
-        options = EventEmitterOptions(exchange=b_params['event_exchange'])
+        conn_params.credentials.username = self.config.broker_params['username']
+        conn_params.credentials.password = self.config.broker_params['password']
 
-        self.hb_em = EventEmitter(
-            options,
-            connection_params=con_params,
+        self._node = Node(node_name=self.__class__.__name__,
+                          transport_type=TransportType.AMQP,
+                          debug=self.config.debug, remote_logger=False,
+                          transport_connection_params=conn_params)
+
+        self._init_endpoints()
+
+    def _init_endpoints(self):
+        self._event_emitter = self._node.create_event_emitter()
+
+        self._hb_event = Event('heartbeat', self.config.hb_event_name)
+
+        self.start_rpc = self._node.create_rpc(
+            rpc_name=self.config.start_rpc_name,
+            on_request=self._start_rpc_callback,
             debug=self.config.debug
         )
+        self.start_rpc.run()
 
-        self.hb_event = Event(name=self.config.hb_event_name,
-                              payload={}, headers={})
-
-        self.start_rpc = RpcServer(
-            self.config.start_rpc_name,
-            on_request=self._start_rpc_callback,
-            connection_params=con_params,
-            debug=self.config.debug)
-        self.start_rpc.run_threaded()
-
-        self.stop_rpc = RpcServer(
-            self.config.stop_rpc_name,
+        self.stop_rpc = self._node.create_rpc(
+            rpc_name=self.config.stop_rpc_name,
             on_request=self._stop_rpc_callback,
-            connection_params=con_params,
-            debug=self.config.debug)
-        self.stop_rpc.run_threaded()
+            debug=self.config.debug
+        )
+        self.stop_rpc.run()
 
-        self.tunnel_info_rpc = RpcServer(
-            self.config.tunnel_info_rpc_name,
+        self.tunnel_info_rpc = self._node.create_rpc(
+            rpc_name=self.config.tunnel_info_rpc_name,
             on_request=self._tunnel_info_rpc_callback,
-            connection_params=con_params,
-            debug=self.config.debug)
-        self.tunnel_info_rpc.run_threaded()
+            debug=self.config.debug
+        )
+        self.tunnel_info_rpc.run()
 
     def _start_rpc_callback(self, msg, meta):
         print('[DEBUG] - Start RPC Call')
@@ -300,12 +291,12 @@ class DeviceTmateAgent():
         return True
 
     def run_forever(self):
-        rate = Rate(1 / self.config.heartbeat_interval)
         self.start_tmate_client()
+        self._rate = Rate(1 / self.config.heartbeat_interval)
         while True:
             # Publish once
-            self.hb_em.send_event(self.hb_event)
-            rate.sleep()
+            self._event_emitter.send_event(self._hb_event)
+            self._rate.sleep()
 
     def start_tmate_client(self):
         """Start tmate client process.
@@ -364,5 +355,8 @@ if __name__ == '__main__':
     cfg_file = args.config
 
     config = load_cfg_file(cfg_file)
+    print('==================== TmateAgent Configuration ====================')
+    print(json.dumps(config.__dict__, indent=4, sort_keys=True))
+    print('==================================================================')
     agent = DeviceTmateAgent(config)
     agent.run_forever()
