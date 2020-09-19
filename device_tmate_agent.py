@@ -84,6 +84,10 @@ def load_cfg_file(fpath):
     except configparser.NoOptionError:
         start_rpc_name = 'thing.{DEVICE_ID}.tmateagent.start'
     try:
+        restart_rpc_name = config.get('control_interfaces', 'restart_rpc_name')
+    except configparser.NoOptionError:
+        restart_rpc_name = 'thing.{DEVICE_ID}.tmateagent.restart'
+    try:
         stop_rpc_name = config.get('control_interfaces', 'stop_rpc_name')
     except configparser.NoOptionError:
         stop_rpc_name = 'thing.{DEVICE_ID}.tmateagent.stop'
@@ -107,9 +111,10 @@ def load_cfg_file(fpath):
         heartbeat_interval = 10
 
     _cfg = AgentConfig(username, password, host, port, vhost, event_exchange,
-                 rpc_exchange, tmate_socket_path, heartbeat_event_name,
-                 start_rpc_name, stop_rpc_name, tunnel_info_rpc_name,
-                 heartbeat_interval, device_id, debug)
+                       rpc_exchange, tmate_socket_path, heartbeat_event_name,
+                       start_rpc_name, restart_rpc_name, stop_rpc_name,
+                       tunnel_info_rpc_name, heartbeat_interval,
+                       device_id, debug)
     return _cfg
 
 
@@ -125,6 +130,7 @@ class AgentConfig():
                  tmate_socket_path='/tmp/tmate.sock',
                  hb_event_name='thing.{DEVICE_ID}.tmateagent.heartbeat',
                  start_rpc_name='thing.{DEVICE_ID}.tmateagent.start',
+                 restart_rpc_name='thing.{DEVICE_ID}.tmateagent.restart',
                  stop_rpc_name='thing.{DEVICE_ID}.tmateagent.stop',
                  tunnel_info_rpc_name='thing.{DEVICE_ID}.tmateagent.tunnel_info',
                  heartbeat_interval=10, device_id=None, debug=False):
@@ -145,6 +151,7 @@ class AgentConfig():
         self.device_id = device_id
         self.hb_event_name = hb_event_name.replace('{DEVICE_ID}', device_id)
         self.start_rpc_name = start_rpc_name.replace('{DEVICE_ID}', device_id)
+        self.restart_rpc_name = restart_rpc_name.replace('{DEVICE_ID}', device_id)
         self.stop_rpc_name = stop_rpc_name.replace('{DEVICE_ID}', device_id)
         self.tunnel_info_rpc_name = tunnel_info_rpc_name.replace(
             '{DEVICE_ID}', device_id)
@@ -208,6 +215,13 @@ class DeviceTmateAgent():
         )
         self.stop_rpc.run()
 
+        self.restart_rpc = self._node.create_rpc(
+            rpc_name=self.config.restart_rpc_name,
+            on_request=self._restart_rpc_callback,
+            debug=self.config.debug
+        )
+        self.restart_rpc.run()
+
         self.tunnel_info_rpc = self._node.create_rpc(
             rpc_name=self.config.tunnel_info_rpc_name,
             on_request=self._tunnel_info_rpc_callback,
@@ -245,6 +259,25 @@ class DeviceTmateAgent():
         response = {
             'status': status,
             'error': str(exc)
+        }
+        return response
+
+    def _restart_rpc_callback(self, msg, meta):
+        self.log.info('Restart RPC Service called')
+        status = 200
+        error = ''
+        tinfo = ''
+        try:
+            self.stop_tmate_agent()
+            self.start_tmate_client()
+            tinfo = self._get_tunnel_info()
+        except Exception as exc:
+            status = 400
+            error = exc
+        response = {
+            'tunnel_info': tinfo,
+            'status': status,
+            'error': error
         }
         return response
 
@@ -314,7 +347,7 @@ class DeviceTmateAgent():
             self.stop_tmate_agent()
         _status = self._launch_tmate_client_headless()
         if not _status:
-            return
+            raise Exception('Could not launch tmate client process')
         _out = self._tmate_get_ssh_info()
         self.ssh_con_str = _out
         _out = self._tmate_get_ssh_ro_info()
