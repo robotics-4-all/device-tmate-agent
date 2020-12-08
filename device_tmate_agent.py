@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 import subprocess
 import os
 import configparser
 import argparse
 import json
+import time
 
 from commlib.node import Node, TransportType
 from commlib.transports.amqp import ConnectionParameters
@@ -151,7 +152,8 @@ class AgentConfig():
         self.device_id = device_id
         self.hb_event_name = hb_event_name.replace('{DEVICE_ID}', device_id)
         self.start_rpc_name = start_rpc_name.replace('{DEVICE_ID}', device_id)
-        self.restart_rpc_name = restart_rpc_name.replace('{DEVICE_ID}', device_id)
+        self.restart_rpc_name = restart_rpc_name.replace('{DEVICE_ID}',
+                                                         device_id)
         self.stop_rpc_name = stop_rpc_name.replace('{DEVICE_ID}', device_id)
         self.tunnel_info_rpc_name = tunnel_info_rpc_name.replace(
             '{DEVICE_ID}', device_id)
@@ -195,12 +197,9 @@ class DeviceTmateAgent():
         self.log = self._node.get_logger()
 
         self._init_endpoints()
+        self._node.init_heartbeat_thread(self.config.hb_event_name)
 
     def _init_endpoints(self):
-        self._event_emitter = self._node.create_event_emitter()
-
-        self._hb_event = Event('heartbeat', self.config.hb_event_name)
-
         self.start_rpc = self._node.create_rpc(
             rpc_name=self.config.start_rpc_name,
             on_request=self._start_rpc_callback,
@@ -318,10 +317,12 @@ class DeviceTmateAgent():
 
     def _launch_tmate_client_headless(self):
         try:
-            out = subprocess.check_output(['tmate',  '-S', self.config.tmate_socket_path,
+            out = subprocess.check_output(['tmate',  '-S',
+                                           self.config.tmate_socket_path,
                                            'new-session', '-d'],
                                           stderr=subprocess.STDOUT)
-            out = subprocess.check_output(['tmate',  '-S', self.config.tmate_socket_path,
+            out = subprocess.check_output(['tmate',  '-S',
+                                           self.config.tmate_socket_path,
                                            'wait', 'tmate-ready'],
                                           stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as exc:
@@ -332,11 +333,8 @@ class DeviceTmateAgent():
 
     def run_forever(self):
         self.start_tmate_client()
-        self._rate = Rate(1 / self.config.heartbeat_interval)
         while True:
-            # Publish once
-            self._event_emitter.send_event(self._hb_event)
-            self._rate.sleep()
+            time.sleep(0.01)
 
     def start_tmate_client(self):
         """Start tmate client process.
