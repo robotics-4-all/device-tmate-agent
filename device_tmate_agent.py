@@ -187,7 +187,7 @@ class DeviceTmateAgent():
 
         device_id = conn_params.credentials.username
 
-        self._node = Node(node_name=self.__class__.__name__,
+        self._node = Node(node_name='tmateagent',
                           transport_type=TransportType.AMQP,
                           debug=self.config.debug,
                           remote_logger=True,
@@ -228,7 +228,7 @@ class DeviceTmateAgent():
         )
         self.tunnel_info_rpc.run()
 
-    def _start_rpc_callback(self, msg, meta):
+    def _start_rpc_callback(self, msg, meta={}):
         self.log.info('Start RPC Service called')
         status = 200
         error = ''
@@ -246,7 +246,7 @@ class DeviceTmateAgent():
         }
         return response
 
-    def _stop_rpc_callback(self, msg, meta):
+    def _stop_rpc_callback(self, msg, meta={}):
         self.log.info('Stop RPC Service called')
         status = 200
         error = ''
@@ -261,7 +261,7 @@ class DeviceTmateAgent():
         }
         return response
 
-    def _restart_rpc_callback(self, msg, meta):
+    def _restart_rpc_callback(self, msg, meta={}):
         self.log.info('Restart RPC Service called')
         status = 200
         error = ''
@@ -280,7 +280,7 @@ class DeviceTmateAgent():
         }
         return response
 
-    def _tunnel_info_rpc_callback(self, msg, meta):
+    def _tunnel_info_rpc_callback(self, msg, meta={}):
         status = 200
         error = ''
         tinfo = ''
