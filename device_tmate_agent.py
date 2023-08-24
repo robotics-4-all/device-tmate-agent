@@ -172,7 +172,7 @@ class DeviceTmateAgent():
         self.ssh_con_ro_str = ''
 
         if config is None:
-            config = AgentConfig(broker_host='r4a-platform.ddns.net',
+            config = AgentConfig(broker_host='issel08.ee.auth.gr',
                                  broker_username='device0',
                                  broker_password='k!sh@')
         self.config = config
